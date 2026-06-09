@@ -122,7 +122,26 @@ fatal: Need to specify how to reconcile divergent branches.
 
 ### ⭐2 — `--force-with-lease` vs `--force`
 
-Что было сделано (`git commit --amend` после push), почему обычный `git push` отказал, чем `--force-with-lease` безопаснее `--force`.
+Сделано `git commit --amend` после push. Это изменило хеши коммита, в результате обычный `git push` отказал.
+
+Варианты действий:
+- `--force` - перезаписать историю в соответствии с локальной. **Применимо только на приватной ветке**
+
+- `--force-with-lease` проверяет нет ли чужих изменений, и перезаписывает историю только в случае их отсутствия: "Я перезапишу удаленную ветку, НО только при условии, что она сейчас выглядит так, как я ожидаю (содержит тот коммит, который я видел в последний раз)"
+При наличии удаленного коммита `--force-with-lease` выдаст ошибку
+
+```
+$ git push --force-with-lease
+To github.com:sshopin/git-bootcamp-day-4.git
+ ! [rejected]        chore/amend-demo -> chore/amend-demo (stale info)
+error: failed to push some refs to 'github.com:sshopin/git-bootcamp-day-4.git'
+```
+
+- `--force-if-includes` проверяет содержит ли локальная ветка тот коммит, который сейчас лежит на сервере. Если работа базируется на старой версии и не включает в себя последний коммит с сервера, Git запретит пуш.
+
+`--force-with-lease` чем  безопаснее `--force`, т.к. не даст затереть чужую работу (то, что кто-то ещё запушил в репозиторий)
+
+Вывод `git push`:
 ```
 $ git push
 To github.com:sshopin/git-bootcamp-day-4.git
@@ -134,6 +153,7 @@ hint: use 'git pull' before pushing again.
 hint: See the 'Note about fast-forwards' in 'git push --help' for details.
 ```
 
+Вывод `git push --force-with-lease`:
 ```
 $ git push --force-with-lease
 Enumerating objects: 4, done.
@@ -147,23 +167,102 @@ To github.com:sshopin/git-bootcamp-day-4.git
  + 9e7a808...3caed61 chore/amend-demo -> chore/amend-demo (forced update)
  ```
 
-При наличии удаленного коммита:
-```
-$ git push --force-with-lease
-To github.com:sshopin/git-bootcamp-day-4.git
- ! [rejected]        chore/amend-demo -> chore/amend-demo (stale info)
-error: failed to push some refs to 'github.com:sshopin/git-bootcamp-day-4.git'
-```
-
 ![Push --force-with-lease успех](screenshots/star-2-force-with-lease.png)
 
 ### ⭐3 — rebase с конфликтом на каждом коммите
 
-Сюжет, через сколько `--continue` прошли, что почувствовали по сравнению с пассивным merge.
+Создана ветка `experiment/rebase-multi`.
+Коммиты, вносящие исправление в код, с существенно изменяющимся смыслом:
+- experiment/rebase-multi: feat(search): пересмотрены веса scoring
+- experiment/rebase-multi: feat(search): лимит 100 + диагностические логи"
+- main: fix(search): новая логика на основе слов в запросе
+
+В ветке `experiment/rebase-multi` сделан `git rebase main`. Получены конфликты.
+Выполнено два `--continue`. Приняты исправления из main, т.к. логика полностью изменена и первый коммит потерял смысл. Из второго коммита оставлен только лог.
 
 ![Финал rebase --continue](screenshots/star-3-multi-conflict.png)
 
 ### ⭐4 — безопасный выход из detached HEAD
+
+Зашли в detached HEAD с помощью
+```bash
+git checkout f232410
+# или
+git switch --detached f232410
+```
+
+```bash
+# git checkout f232410
+Note: switching to 'f232410'.
+
+You are in 'detached HEAD' state. You can look around, make experimental
+changes and commit them, and you can discard any commits you make in this
+state without impacting any branches by switching back to a branch.
+
+If you want to create a new branch to retain commits you create, you may
+do so (now or later) by using -c with the switch command. Example:
+
+  git switch -c <new-branch-name>
+
+Or undo this operation with:
+
+  git switch -
+
+Turn off this advice by setting config variable advice.detachedHead to false
+
+HEAD is now at f232410 fix(prod): tighten timeouts, harden Dockerfile, add welcome banner
+
+# git status
+HEAD detached at f232410
+```
+
+#### Вариант 1
+Сделан коммит с файлом `experiment.md`: 'exp: проверка гипотезы про X'
+
+Вышли с помощью создания ветки `experiment/saved-from-detached`:
+```bash
+# git switch -c experiment/saved-from-detached
+
+# git --no-pager log --oneline
+7d2d441 (HEAD -> experiment/saved-from-detached) exp: проверка гипотезы про X
+f232410 fix(prod): tighten timeouts, harden Dockerfile, add welcome banner
+15a087d initial commit: webapp-notes starter
+```
+
+#### Вариант 2
+Ситуация - забытый коммит.
+
+Зашли аналогично варианту 2. Сделали коммит с файлов experiment2.md: "exp: ещё одна гипотеза".
+Переключились на ветку main:
+```bash
+❯ git switch main
+Warning: you are leaving 1 commit behind, not connected to
+any of your branches:
+
+  2f84399 exp: ещё одна гипотеза
+
+If you want to keep it by creating a new branch, this may be a good time
+to do so with:
+
+ git branch <new-branch-name> 2f84399
+
+Switched to branch 'main'
+Your branch is ahead of 'origin/main' by 1 commit.
+  (use "git push" to publish your local commits)
+```
+
+С помощью git reflog нашли зависший хеш зависшего коммита 2f84399 по тексту: 
+```
+2f84399 HEAD@{2}: commit: exp: ещё одна гипотеза
+```
+
+Создали ветку по хешу коммита:
+```bash
+❯ git switch -c experiment/recovered-by-reflog 2f84399
+Switched to a new branch 'experiment/recovered-by-reflog'
+```
+
+
 
 Как зашли в detached HEAD, какой коммит сделали, как выходили через `git switch -c`, чем `git reflog` помог как страховка.
 
