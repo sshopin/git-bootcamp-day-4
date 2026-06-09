@@ -27,14 +27,13 @@ class Stats:
 
 
 def search_notes(query: str, limit: int = 25) -> list[SearchHit]:
-    """Поиск под продакшен: точный scoring, приоритет тегов перед телом.
-
-    На небольшой выдаче (limit=25) важна релевантность: точное совпадение по
-    тегу — 1.0, начало title — 0.95, подстрока в title — 0.7, тело — 0.4 с
-    бонусом за частоту, но не выше 0.6.
-    """
+    """Поиск по словам запроса: каждое слово ищется отдельно, score — доля совпавших слов."""
     query_norm = (query or "").strip().lower()
     if not query_norm:
+        return []
+
+    words = [w for w in query_norm.split() if w]
+    if not words:
         return []
 
     notes = models.list_notes(limit=500)
@@ -43,20 +42,15 @@ def search_notes(query: str, limit: int = 25) -> list[SearchHit]:
         title_l = note.title.lower()
         body_l = note.body.lower()
         tags_l = [t.lower() for t in note.tags]
+        haystack = title_l + " " + body_l + " " + " ".join(tags_l)
 
-        if any(query_norm == tag for tag in tags_l):
-            hits.append(SearchHit(note=note, score=1.0, matched_in="tag"))
+        matched = sum(1 for w in words if w in haystack)
+        if matched == 0:
             continue
-        if title_l.startswith(query_norm):
-            hits.append(SearchHit(note=note, score=0.95, matched_in="title"))
-            continue
-        if query_norm in title_l:
-            hits.append(SearchHit(note=note, score=0.7, matched_in="title"))
-            continue
-        if query_norm in body_l:
-            occurrences = body_l.count(query_norm)
-            score = min(0.6, 0.4 + 0.05 * occurrences)
-            hits.append(SearchHit(note=note, score=score, matched_in="body"))
+
+        score = matched / len(words)
+        matched_in = "title" if any(w in title_l for w in words) else "body"
+        hits.append(SearchHit(note=note, score=score, matched_in=matched_in))
 
     hits.sort(key=lambda h: h.score, reverse=True)
     return hits[:limit]
