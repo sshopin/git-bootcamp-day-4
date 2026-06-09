@@ -53,6 +53,7 @@ def search_notes(query: str, limit: int = 25) -> list[SearchHit]:
         hits.append(SearchHit(note=note, score=score, matched_in=matched_in))
 
     hits.sort(key=lambda h: h.score, reverse=True)
+    print('Result:',hits[:limit])
     return hits[:limit]
 
 
